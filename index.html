@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart English Trainer - 智慧英語特訓器</title>
+  <meta name="description" content="高效的英語句子拼寫與記憶訓練工具，支援鍵盤快捷鍵操作、AI 句子導入與網頁真人語音合成。">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <button id="btn-back" class="icon-btn" title="返回"><i class="fa-solid fa-chevron-left"></i></button>
+        <div class="unit-info">
+          <select id="unit-selector" class="unit-selector"></select>
+          <select id="toeic-filter" class="unit-selector hidden" style="width: 140px; margin-right: 8px;">
+            <option value="all">全部題目</option>
+            <option value="new">新題目</option>
+            <option value="review">待複習 (生詞)</option>
+            <option value="mastered">已掌握</option>
+          </select>
+          <select id="toeic-category-filter" class="unit-selector hidden" style="width: 140px; margin-right: 8px;">
+            <option value="all">所有題型</option>
+            <option value="grammar">文法詞性題</option>
+            <option value="vocabulary">字彙單字題</option>
+          </select>
+          <span id="progress-indicator" class="progress-badge">7 / 28</span>
+        </div>
+      </div>
+      
+      <div class="header-center">
+        <div class="tab-container">
+          <button id="tab-sentence" class="tab-btn active"><i class="fa-solid fa-keyboard"></i> 句子特訓</button>
+          <button id="tab-toeic" class="tab-btn"><i class="fa-solid fa-check-double"></i> 多益模擬</button>
+          <button id="tab-toeic-part2" class="tab-btn"><i class="fa-solid fa-headphones"></i> 聽力應答</button>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <button id="btn-tts-settings" class="text-btn" title="語音與金鑰設定"><i class="fa-solid fa-gears"></i> 設定</button>
+        <button id="btn-import" class="accent-btn" title="導入 AI 句子"><i class="fa-solid fa-file-import"></i> 導入</button>
+        <button id="btn-reset" class="text-btn" title="重置輸入 (Esc)"><i class="fa-solid fa-rotate-left"></i> 重置</button>
+        <div id="clock-display" class="clock-badge">16:10</div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <div class="card training-card">
+        <!-- Progress Bar -->
+        <div class="progress-bar-container">
+          <div id="progress-bar-fill" class="progress-bar-fill" style="width: 25%"></div>
+        </div>
+
+        <!-- Speaker button & Status tags -->
+        <div class="card-top-actions">
+          <div class="difficulty-tags">
+            <button id="btn-mark-mastered" class="status-btn btn-master" title="標記為已掌握 (Ctrl+N)"><i class="fa-regular fa-circle-check"></i> 掌握</button>
+            <button id="btn-mark-review" class="status-btn btn-review" title="標記為待複習/生詞 (Ctrl+Q)"><i class="fa-regular fa-circle-question"></i> 複習</button>
+          </div>
+          <div class="card-top-right">
+            <div id="sentence-mode-toggle" class="mode-toggle-container">
+              <span class="mode-label">拼寫</span>
+              <label class="switch">
+                <input type="checkbox" id="mode-scramble-toggle">
+                <span class="slider round"></span>
+              </label>
+              <span class="mode-label">拆句</span>
+            </div>
+            <button id="btn-speak" class="speak-btn" title="朗讀句子 (Ctrl/Alt)"><i class="fa-solid fa-volume-high"></i> 撥音</button>
+          </div>
+        </div>
+
+        <!-- Prompt Text (Chinese) -->
+        <div class="prompt-container">
+          <h1 id="chinese-prompt" class="chinese-text">我需要一張處方。</h1>
+        </div>
+
+        <!-- Spelling Input Area -->
+        <div id="spelling-zone" class="typing-container">
+          <!-- Dynamic word inputs will be generated here -->
+        </div>
+
+        <!-- Scramble Mode Zone -->
+        <div id="scramble-zone" class="scramble-container hidden">
+          <div id="scramble-slots" class="scramble-slots-row">
+            <!-- Assembled words go here -->
+          </div>
+          <div id="scramble-options" class="scramble-options-row">
+            <!-- Shuffled words selectable cards go here -->
+          </div>
+        </div>
+
+        <!-- TOEIC Practice Zone -->
+        <div id="toeic-zone" class="toeic-container hidden">
+          <div class="toeic-question-box">
+            <p id="toeic-question-text" class="toeic-question-text">
+              The manager decided to <span class="toeic-blank">________</span> the meeting until next Monday.
+            </p>
+          </div>
+          
+          <div class="toeic-options-grid">
+            <button class="toeic-opt-btn" data-option="A"><span class="opt-badge">A</span> <span class="opt-text">postpone</span></button>
+            <button class="toeic-opt-btn" data-option="B"><span class="opt-badge">B</span> <span class="opt-text">cancel</span></button>
+            <button class="toeic-opt-btn" data-option="C"><span class="opt-badge">C</span> <span class="opt-text">reject</span></button>
+            <button class="toeic-opt-btn" data-option="D"><span class="opt-badge">D</span> <span class="opt-text">discuss</span></button>
+          </div>
+
+          <div class="toeic-actions">
+            <button id="btn-toeic-explain" class="speak-btn"><i class="fa-solid fa-brain"></i> <span id="explain-btn-text">AI 翻譯與解析</span></button>
+          </div>
+        </div>
+
+        <!-- TOEIC Part 2 Practice Zone -->
+        <div id="toeic-part2-zone" class="toeic-container hidden">
+          <div class="toeic-question-box" style="padding: 36px 24px;">
+            <div class="audio-control-row" style="margin-bottom: 20px; text-align: center;">
+              <button id="btn-part2-play" class="accent-btn" style="border-radius: 50%; width: 64px; height: 64px; font-size: 1.5rem; box-shadow: 0 0 20px var(--accent-glow);"><i class="fa-solid fa-play"></i></button>
+            </div>
+            <p id="toeic-part2-status-text" style="color: var(--text-secondary); font-size: 0.95rem; font-weight: 500; text-align: center;">
+              點擊播放鈕或按 <span class="key">Space</span> 聆聽題目與選項
+            </p>
+            <audio id="audio-part2-player" style="display: none;"></audio>
+
+            <!-- Question text & option transcripts (revealed after answering) -->
+            <div id="part2-question-reveal" class="hidden" style="margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 20px; text-align: left;">
+              <p class="hint-label" style="text-align: center; margin-bottom: 12px;">聽力原文</p>
+              <p id="toeic-part2-question-text" class="toeic-question-text" style="font-size: 1.25rem; font-weight: 600; margin-bottom: 16px; text-align: center; color: var(--accent-primary);">
+                Question transcript
+              </p>
+              <div style="font-size: 1rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 8px; max-width: 400px; margin: 0 auto; margin-bottom: 16px;">
+                <div><span class="key" style="min-width: 24px; text-align: center; margin-right: 8px;">A</span> <span id="part2-transcript-a">Option A transcript</span></div>
+                <div><span class="key" style="min-width: 24px; text-align: center; margin-right: 8px;">B</span> <span id="part2-transcript-b">Option B transcript</span></div>
+                <div><span class="key" style="min-width: 24px; text-align: center; margin-right: 8px;">C</span> <span id="part2-transcript-c">Option C transcript</span></div>
+              </div>
+
+              <!-- AI Explain button for Part 2 -->
+              <div class="toeic-actions" style="margin-top: 12px; margin-bottom: 12px; display: flex; justify-content: center;">
+                <button id="btn-part2-explain" class="speak-btn" style="margin: 0 auto;"><i class="fa-solid fa-brain"></i> <span id="part2-explain-btn-text">AI 翻譯與解析</span></button>
+              </div>
+
+              <!-- Explanation container for Part 2 -->
+              <div id="part2-explanation-box" class="explanation-box hidden" style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; margin-top: 12px;">
+                <div class="hint-label">中文翻譯與解析</div>
+                <div id="toeic-part2-explanation" class="explanation-text" style="margin-top: 8px; line-height: 1.6;">...</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Option Grid A, B, C (3 choices) -->
+          <div class="toeic-options-grid" style="grid-template-columns: 1fr 1fr 1fr; margin-bottom: 0;">
+            <button class="toeic-part2-opt-btn toeic-opt-btn" data-option="A"><span class="opt-badge">A</span> <span class="opt-text">選項 A</span></button>
+            <button class="toeic-part2-opt-btn toeic-opt-btn" data-option="B"><span class="opt-badge">B</span> <span class="opt-text">選項 B</span></button>
+            <button class="toeic-part2-opt-btn toeic-opt-btn" data-option="C"><span class="opt-badge">C</span> <span class="opt-text">選項 C</span></button>
+          </div>
+        </div>
+
+        <!-- Answer / Hint Area (Hidden by default) -->
+        <div id="answer-hint" class="answer-hint-container hidden">
+          <div class="hint-label">正確答案</div>
+          <div id="english-answer" class="english-answer-text">I need a prescription.</div>
+          <div id="explanation-box" class="explanation-box hidden">
+            <div class="hint-label" style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">中文翻譯與解析</div>
+            <div id="toeic-explanation" class="explanation-text">...</div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer: Keyboard Shortcuts Help Panel -->
+    <footer class="app-footer">
+      <div class="shortcuts-panel">
+        <div class="shortcut-item"><span class="key">Ctrl</span> + <span class="key">N</span> <span class="label">掌握</span></div>
+        <div class="shortcut-item"><span class="key">Ctrl</span> + <span class="key">Q</span> <span class="label">生詞</span></div>
+        <div class="shortcut-item"><span class="key">Enter</span> <span class="label">提交/下一題</span></div>
+        <div class="shortcut-item"><span class="key">Shift</span> + <span class="key">←</span> / <span class="key">→</span> <span class="label">切題</span></div>
+        <div class="shortcut-item"><span class="key">↑</span> / <span class="key">↓</span> <span class="label">答案</span></div>
+        <div class="shortcut-item toeic-help-shortcut hidden"><span class="key">A</span>-<span class="key">D</span> / <span class="key">1</span>-<span class="key">4</span> <span class="label">作答</span></div>
+        <div class="shortcut-item toeic-help-shortcut hidden"><span class="key">E</span> <span class="label">AI翻譯與解析</span></div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Modal: Import AI Sentences -->
+  <div id="import-modal" class="modal">
+    <div class="modal-content glassmorphism">
+      <div class="modal-header">
+        <h2><i class="fa-solid fa-robot"></i> 導入 AI 產生的句子</h2>
+        <button id="modal-close" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="import-help">您可以向 AI (ChatGPT/Gemini 等) 發送以下提示詞，然後將其產生的結果貼在下方：</p>
+        <div class="prompt-template-box">
+          <code>請幫我寫 10 句關於 [某主題] 的英語學習句子，包含英文與中文翻譯，格式如下：<br>
+          We need a prescription. / 我們需要一張處方。<br>
+          Can I see the doctor? / 我可以看醫生嗎？
+          </code>
+        </div>
+        <textarea id="import-textarea" placeholder="請在此貼上 AI 生成的句子，格式如：&#10;I need a prescription. / 我需要一張處方。&#10;This medicine has side effects. / 這藥有副作用。"></textarea>
+        
+        <div class="import-options">
+          <div class="form-group">
+            <label for="import-unit-name">單元名稱：</label>
+            <input type="text" id="import-unit-name" value="自訂 AI 單元" placeholder="例如：Unit 12 旅遊英文">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-import-cancel" class="text-btn">取消</button>
+        <button id="btn-import-submit" class="primary-btn">確認導入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Voice Settings -->
+  <div id="voice-modal" class="modal">
+    <div class="modal-content glassmorphism">
+      <div class="modal-header">
+        <h2><i class="fa-solid fa-gears"></i> 語音與金鑰設定</h2>
+        <button id="voice-modal-close" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="voice-select">選擇發音語音（TTS）：</label>
+          <select id="voice-select" class="form-control">
+            <!-- Populated via JS -->
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="voice-speed">朗讀速度 (<span id="speed-val">1.0</span>x)：</label>
+          <input type="range" id="voice-speed" min="0.5" max="2.0" step="0.1" value="1.0" class="slider-control">
+        </div>
+        <div class="form-group">
+          <label class="checkbox-container">
+            <input type="checkbox" id="auto-speak-toggle" checked>
+            <span class="checkmark"></span>
+            載入題目時自動朗讀
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-container">
+            <input type="checkbox" id="correct-speak-toggle" checked>
+            <span class="checkmark"></span>
+            回答正確時自動朗讀
+          </label>
+        </div>
+        
+        <!-- Gemini API Key configuration -->
+        <div class="form-group" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
+          <label for="gemini-key-input">Gemini API 金鑰：</label>
+          <input type="password" id="gemini-key-input" class="form-control" placeholder="請貼上您的 API 金鑰 (多益 AI 解析用)" style="font-family: inherit;">
+          <p class="import-help" style="font-size: 0.75rem; margin-top: 4px;">金鑰將儲存在您本機的 `config.json` 中。尚未取得？可至 <a href="https://aistudio.google.com/" target="_blank" style="color: var(--accent-primary);">Google AI Studio</a> 免費申請。</p>
+        </div>
+        <div class="form-group">
+          <label for="gemini-model-select">AI 模型：</label>
+          <select id="gemini-model-select" class="form-control">
+            <option value="gemini-3.1-flash-lite">免費額度優先 / 省額度（Flash-Lite）</option>
+            <option value="gemini-3.5-flash">較強解析（Flash）</option>
+            <option value="gemini-2.5-flash-lite">舊版備用（2.5 Flash-Lite）</option>
+          </select>
+          <p class="import-help" style="font-size: 0.75rem; margin-top: 4px;">建議平常練習英文解析使用 Flash-Lite，超出免費額度時程式會提示稍後再試。</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-voice-close" class="primary-btn">儲存並關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
