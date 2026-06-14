@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vietnamese TTS Demo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #667085;
+      --border: #d9e1ee;
+      --accent: #0f766e;
+      --accent-dark: #0b5f59;
+      --ok: #15803d;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    main {
+      width: min(980px, calc(100% - 32px));
+      margin: 32px auto;
+    }
+
+    header {
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .toolbar,
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 12px 30px rgba(16, 24, 40, 0.06);
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) 180px 140px;
+      gap: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      align-items: end;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    select,
+    input[type="range"] {
+      width: 100%;
+    }
+
+    select {
+      height: 40px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0 10px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    .rate-value {
+      height: 40px;
+      display: flex;
+      align-items: center;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .card {
+      padding: 18px;
+    }
+
+    .sentence-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .vietnamese {
+      font-size: 26px;
+      line-height: 1.35;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .translation {
+      font-size: 16px;
+      color: var(--muted);
+    }
+
+    .words {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .word {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 9px;
+      background: #f8fafc;
+      font-weight: 650;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 800;
+      padding: 11px 16px;
+      cursor: pointer;
+      min-width: 96px;
+    }
+
+    button:hover {
+      background: var(--accent-dark);
+    }
+
+    .status {
+      margin-top: 14px;
+      font-size: 14px;
+      color: var(--ok);
+      min-height: 22px;
+    }
+
+    @media (max-width: 760px) {
+      .toolbar,
+      .sentence-row {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .vietnamese {
+        font-size: 22px;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Vietnamese TTS Demo</h1>
+      <p>獨立測試頁：檢查瀏覽器是否支援越南文朗讀，並觀察越南文句型拆字效果。</p>
+    </header>
+
+    <section class="toolbar">
+      <div>
+        <label for="voice-select">越南文語音</label>
+        <select id="voice-select"></select>
+      </div>
+      <div>
+        <label for="rate">速度</label>
+        <input id="rate" type="range" min="0.6" max="1.4" step="0.1" value="0.9">
+      </div>
+      <div class="rate-value"><span id="rate-value">0.9x</span></div>
+    </section>
+
+    <section id="sentence-list" class="grid"></section>
+    <div id="status" class="status"></div>
+  </main>
+
+  <script>
+    const sentences = [
+      {
+        vi: "Xin chào, tôi đang học tiếng Việt.",
+        zh: "你好，我正在學越南語。"
+      },
+      {
+        vi: "Hôm nay thời tiết rất đẹp.",
+        zh: "今天天氣很好。"
+      },
+      {
+        vi: "Tôi muốn gọi một ly cà phê sữa đá.",
+        zh: "我想點一杯越南冰奶咖啡。"
+      },
+      {
+        vi: "Bạn có thể nói chậm hơn không?",
+        zh: "你可以說慢一點嗎？"
+      },
+      {
+        vi: "Tôi cần luyện nghe và phát âm mỗi ngày.",
+        zh: "我需要每天練習聽力和發音。"
+      },
+      {
+        vi: "Mục tiêu của tôi là giao tiếp tự tin hơn.",
+        zh: "我的目標是更有自信地溝通。"
+      }
+    ];
+
+    const voiceSelect = document.getElementById("voice-select");
+    const rate = document.getElementById("rate");
+    const rateValue = document.getElementById("rate-value");
+    const sentenceList = document.getElementById("sentence-list");
+    const statusText = document.getElementById("status");
+
+    function getVietnameseVoices() {
+      const voices = speechSynthesis.getVoices();
+      return voices.filter(voice => voice.lang.toLowerCase().startsWith("vi"));
+    }
+
+    function populateVoices() {
+      const vietnameseVoices = getVietnameseVoices();
+      voiceSelect.innerHTML = "";
+
+      if (vietnameseVoices.length === 0) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "找不到 vi-VN 語音，將使用瀏覽器預設語音";
+        voiceSelect.appendChild(option);
+        statusText.textContent = "這台電腦/瀏覽器目前沒有列出越南文語音；仍可按播放測試預設朗讀。";
+        return;
+      }
+
+      vietnameseVoices.forEach(voice => {
+        const option = document.createElement("option");
+        option.value = voice.name;
+        option.textContent = `${voice.name} (${voice.lang})`;
+        voiceSelect.appendChild(option);
+      });
+      statusText.textContent = `找到 ${vietnameseVoices.length} 個越南文語音。`;
+    }
+
+    function speak(text) {
+      speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "vi-VN";
+      utterance.rate = Number(rate.value);
+
+      const selectedVoice = speechSynthesis
+        .getVoices()
+        .find(voice => voice.name === voiceSelect.value);
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+      }
+
+      utterance.onstart = () => {
+        statusText.textContent = `朗讀中：${text}`;
+      };
+      utterance.onend = () => {
+        statusText.textContent = "朗讀完成。";
+      };
+      utterance.onerror = () => {
+        statusText.textContent = "朗讀失敗，請確認瀏覽器是否允許語音合成。";
+      };
+
+      speechSynthesis.speak(utterance);
+    }
+
+    function renderSentences() {
+      sentenceList.innerHTML = "";
+      sentences.forEach(sentence => {
+        const card = document.createElement("article");
+        card.className = "card";
+
+        const row = document.createElement("div");
+        row.className = "sentence-row";
+
+        const textWrap = document.createElement("div");
+
+        const vi = document.createElement("div");
+        vi.className = "vietnamese";
+        vi.textContent = sentence.vi;
+
+        const zh = document.createElement("div");
+        zh.className = "translation";
+        zh.textContent = sentence.zh;
+
+        const words = document.createElement("div");
+        words.className = "words";
+        sentence.vi.split(/\s+/).forEach(token => {
+          const word = document.createElement("span");
+          word.className = "word";
+          word.textContent = token;
+          words.appendChild(word);
+        });
+
+        textWrap.appendChild(vi);
+        textWrap.appendChild(zh);
+        textWrap.appendChild(words);
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "播放";
+        button.addEventListener("click", () => speak(sentence.vi));
+
+        row.appendChild(textWrap);
+        row.appendChild(button);
+        card.appendChild(row);
+        sentenceList.appendChild(card);
+      });
+    }
+
+    rate.addEventListener("input", () => {
+      rateValue.textContent = `${rate.value}x`;
+    });
+
+    renderSentences();
+    populateVoices();
+    speechSynthesis.onvoiceschanged = populateVoices;
+  </script>
+</body>
+</html>
