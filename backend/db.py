@@ -1,4 +1,5 @@
 import sqlite3
+import json
 
 from .classifier import classify_question_locally
 from .config import DATABASE
@@ -61,6 +62,68 @@ def init_db():
             explanation TEXT
         )
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS pet_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            state_json TEXT NOT NULL,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sentence_ai_notes (
+            sentence_id INTEGER PRIMARY KEY,
+            chinese TEXT,
+            grammar_note TEXT,
+            vocabulary_note TEXT,
+            common_mistakes TEXT,
+            example TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (sentence_id) REFERENCES sentences(id) ON DELETE CASCADE
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS word_notes (
+            word TEXT PRIMARY KEY,
+            ipa TEXT,
+            syllables TEXT,
+            stress TEXT,
+            meaning_zh TEXT,
+            pronunciation_note TEXT,
+            example TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    cursor.execute("SELECT id FROM pet_state WHERE id = 1")
+    if not cursor.fetchone():
+        default_pet_state = {
+            "level": 1,
+            "exp": 0,
+            "streak": 0,
+            "lastFedDate": "",
+            "skin": "default",
+            "inventory": {
+                "snack": 0,
+                "toy": 0,
+                "charm": 0,
+            },
+            "daily": {
+                "date": "",
+                "correct": 0,
+                "sentence": 0,
+                "part2": 0,
+                "claimed": [],
+            },
+        }
+        cursor.execute(
+            "INSERT INTO pet_state (id, state_json) VALUES (1, ?)",
+            (json.dumps(default_pet_state),),
+        )
 
     for column_sql in [
         "ALTER TABLE toeic_part2_questions ADD COLUMN chinese TEXT",

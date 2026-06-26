@@ -66,6 +66,21 @@
             <button id="btn-mark-mastered" class="status-btn btn-master" title="標記為已掌握 (Ctrl+N)"><i class="fa-regular fa-circle-check"></i> 掌握</button>
             <button id="btn-mark-review" class="status-btn btn-review" title="標記為待複習/生詞 (Ctrl+Q)"><i class="fa-regular fa-circle-question"></i> 複習</button>
           </div>
+          <div id="pet-panel" class="pet-panel" title="Answer correctly to grow your pet egg">
+            <div id="pet-egg" class="pet-egg" aria-hidden="true">
+              <img id="pet-egg-img" class="pet-egg-img" src="assets/pets/skins/default/stage-01/frame-1.png" alt="">
+            </div>
+            <div class="pet-details">
+              <div class="pet-header">
+                <span id="pet-stage-name" class="pet-stage-name">Pet Egg</span>
+                <span id="pet-level" class="pet-level">Lv.1</span>
+              </div>
+              <div class="pet-exp-bar" aria-hidden="true">
+                <div id="pet-exp-fill" class="pet-exp-fill"></div>
+              </div>
+              <div id="pet-exp-text" class="pet-exp-text">0 / 100 XP</div>
+            </div>
+          </div>
           <div class="card-top-right">
             <div id="sentence-mode-toggle" class="mode-toggle-container">
               <span class="mode-label">拼寫</span>
@@ -76,6 +91,31 @@
               <span class="mode-label">拆句</span>
             </div>
             <button id="btn-speak" class="speak-btn" title="朗讀句子 (Ctrl/Alt)"><i class="fa-solid fa-volume-high"></i> 撥音</button>
+          </div>
+        </div>
+
+        <div id="pet-care-panel" class="pet-care-panel">
+          <div class="pet-showcase">
+            <div id="pet-avatar" class="pet-avatar skin-default">
+              <img id="pet-avatar-img" class="pet-avatar-img" src="assets/pets/skins/default/stage-01/frame-1.png" alt="Pet companion">
+              <span id="pet-avatar-spark" class="pet-avatar-spark"></span>
+            </div>
+            <div>
+              <div id="pet-care-title" class="pet-care-title">Pet Egg</div>
+              <div id="pet-care-subtitle" class="pet-care-subtitle">Answer correctly to help it grow.</div>
+            </div>
+          </div>
+          <div class="pet-care-section">
+            <div class="pet-care-label">Skins</div>
+            <div id="pet-skin-list" class="pet-skin-list"></div>
+          </div>
+          <div class="pet-care-section">
+            <div class="pet-care-label">Items</div>
+            <div id="pet-item-list" class="pet-item-list"></div>
+          </div>
+          <div class="pet-care-section pet-daily-section">
+            <div class="pet-care-label">Daily</div>
+            <div id="pet-daily-list" class="pet-daily-list"></div>
           </div>
         </div>
 
@@ -96,6 +136,24 @@
           </div>
           <div id="scramble-options" class="scramble-options-row">
             <!-- Shuffled words selectable cards go here -->
+          </div>
+        </div>
+
+        <div id="sentence-ai-panel" class="sentence-ai-panel">
+          <div class="sentence-ai-toolbar">
+            <button id="btn-sentence-explain" class="speak-btn"><i class="fa-solid fa-brain"></i> <span id="sentence-explain-btn-text">AI Sentence Notes</span></button>
+            <div class="word-lookup-box">
+              <input id="word-lookup-input" class="word-lookup-input" type="text" placeholder="word / pronunciation">
+              <button id="btn-word-lookup" class="speak-btn"><i class="fa-solid fa-magnifying-glass"></i> IPA</button>
+            </div>
+          </div>
+          <div id="sentence-ai-result" class="sentence-ai-result hidden">
+            <div class="hint-label">Sentence Notes</div>
+            <div id="sentence-ai-content" class="ai-note-content"></div>
+          </div>
+          <div id="word-note-result" class="word-note-result hidden">
+            <div class="hint-label">Pronunciation Note</div>
+            <div id="word-note-content" class="ai-note-content"></div>
           </div>
         </div>
 

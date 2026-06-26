@@ -90,3 +90,54 @@ The "explanation" key must contain a concise explanation of the response logic a
 Do not include any markdown fences (like ```json) or explanation text outside the JSON object.
 """
     return call_gemini(api_key, model_name, prompt)
+
+
+def explain_sentence(api_key, model_name, sentence_data):
+    prompt = f"""
+You are an expert English teacher helping a Traditional Chinese speaker understand sentence grammar.
+Analyze this sentence for practical learning, not for a linguistics textbook.
+
+English sentence: {sentence_data['english']}
+Existing Traditional Chinese translation: {sentence_data.get('chinese', '')}
+
+Please output JSON with exactly these keys:
+"chinese", "grammar_note", "vocabulary_note", "common_mistakes", "example".
+
+Requirements:
+- Use Traditional Chinese.
+- "chinese": a natural Traditional Chinese translation.
+- "grammar_note": explain the sentence structure, clauses, tense, important grammar patterns, and why the word order works.
+- "vocabulary_note": explain important words, phrases, collocations, or prepositions in this sentence.
+- "common_mistakes": list likely mistakes a learner may make with this sentence.
+- "example": provide one short similar English sentence and its Traditional Chinese translation.
+- Keep each field concise but useful.
+
+Do not include markdown fences or any text outside the JSON object.
+"""
+    return call_gemini(api_key, model_name, prompt)
+
+
+def lookup_word_pronunciation(api_key, model_name, word, sentence=""):
+    context_line = f"Context sentence: {sentence}" if sentence else "No context sentence provided."
+    prompt = f"""
+You are an expert English pronunciation coach for Traditional Chinese speakers.
+Analyze the word below and provide IPA and pronunciation help.
+
+Word: {word}
+{context_line}
+
+Please output JSON with exactly these keys:
+"word", "ipa", "syllables", "stress", "meaning_zh", "pronunciation_note", "example".
+
+Requirements:
+- Use Traditional Chinese except the English word, IPA, syllables, and example sentence.
+- "ipa": provide standard IPA. If both American and British pronunciations are common, include both clearly.
+- "syllables": split the word into syllables.
+- "stress": explain which syllable is stressed.
+- "meaning_zh": explain the meaning that fits the context if a context sentence is provided.
+- "pronunciation_note": practical tips for common pronunciation problems.
+- "example": one short English example sentence plus Traditional Chinese translation.
+
+Do not include markdown fences or any text outside the JSON object.
+"""
+    return call_gemini(api_key, model_name, prompt)
