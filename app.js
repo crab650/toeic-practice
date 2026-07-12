@@ -27,6 +27,7 @@ let currentFilter = "all"; // "all", "new", "review", "mastered"
 let isScrambleMode = false;
 let isAnswerShowing = false;
 let currentAudioPlayCount = 0;
+let currentPart2AudioPlayCount = 0;
 let currentRevealedAnswer = false;
 let autoSpeak = true;
 let correctSpeak = true;
@@ -124,6 +125,9 @@ const btnShowAnswer = document.getElementById("btn-show-answer");
 const btnSpeak = document.getElementById("btn-speak");
 const btnImport = document.getElementById("btn-import");
 const btnTtsSettings = document.getElementById("btn-tts-settings");
+const btnPracticeSync = document.getElementById("btn-practice-sync");
+const syncButtonLabel = document.getElementById("sync-button-label");
+const syncPendingCount = document.getElementById("sync-pending-count");
 
 const btnMarkMastered = document.getElementById("btn-mark-mastered");
 const btnMarkReview = document.getElementById("btn-mark-review");
@@ -195,6 +199,10 @@ const autoSpeakToggle = document.getElementById("auto-speak-toggle");
 const correctSpeakToggle = document.getElementById("correct-speak-toggle");
 const geminiKeyInput = document.getElementById("gemini-key-input");
 const geminiModelSelect = document.getElementById("gemini-model-select");
+const platformBaseUrlInput = document.getElementById("platform-base-url-input");
+const platformTokenInput = document.getElementById("platform-token-input");
+const platformTokenHelp = document.getElementById("platform-token-help");
+const syncStatusDetail = document.getElementById("sync-status-detail");
 const petEgg = document.getElementById("pet-egg");
 const petEggImg = document.getElementById("pet-egg-img");
 const petStageName = document.getElementById("pet-stage-name");
@@ -234,6 +242,7 @@ async function init() {
   
   // Update practice stats
   updatePracticeStatsUI();
+  updatePracticeSyncStatus();
 
   // 3. Setup Speech Voices
   setupSpeechVoices();
@@ -270,7 +279,41 @@ async function updatePracticeStatsUI() {
   }
 }
 
-async function logPracticeResult(isCorrect) {
+function localOccurredAt(date = new Date()) {
+  const pad = value => String(value).padStart(2, "0");
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absOffset = Math.abs(offsetMinutes);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +
+    `${sign}${pad(Math.floor(absOffset / 60))}:${pad(absOffset % 60)}`;
+}
+
+function localTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Bangkok";
+}
+
+async function queuePracticeEvent(event) {
+  try {
+    const response = await fetch("/api/practice/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...event,
+        occurred_at: localOccurredAt(),
+        timezone: localTimezone()
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) console.error("Failed to queue practice event:", result.error);
+    updatePracticeSyncStatus();
+    return result;
+  } catch (e) {
+    console.error("Failed to queue practice event:", e);
+  }
+}
+
+async function logPracticeResult(isCorrect, userAnswer = null) {
   if (!currentSentences || currentSentences.length === 0 || currentSentenceIndex < 0) return;
   const sentence = currentSentences[currentSentenceIndex];
   
@@ -279,6 +322,19 @@ async function logPracticeResult(isCorrect) {
   
   currentAudioPlayCount = 0;
   currentRevealedAnswer = false;
+
+  const exerciseType = isScrambleMode ? "scramble" : "spelling";
+  queuePracticeEvent({
+    sentence_id: `${currentLanguage}-sentence-${sentence.id}`,
+    language: currentLanguage,
+    exercise_type: exerciseType,
+    sentence_text: sentence.english,
+    translation_text: sentence.chinese || null,
+    user_answer: userAnswer,
+    is_correct: isCorrect,
+    audio_play_count: playCountToSend,
+    revealed_answer: revealedAnswerToSend
+  });
 
   try {
     const response = await fetch("/api/practice/log", {
@@ -297,6 +353,40 @@ async function logPracticeResult(isCorrect) {
     }
   } catch (e) {
     console.error("Failed to log practice result:", e);
+  }
+}
+
+async function updatePracticeSyncStatus() {
+  if (!syncPendingCount) return;
+  try {
+    const response = await fetch("/api/practice/sync/status");
+    const status = await response.json();
+    syncPendingCount.textContent = status.pending || 0;
+    btnPracticeSync.title = `待同步 ${status.pending || 0} 筆；失敗 ${status.failed || 0} 筆`;
+    if (syncStatusDetail) {
+      const last = status.last_synced_at ? new Date(status.last_synced_at).toLocaleString() : "尚無";
+      syncStatusDetail.textContent = `待同步：${status.pending || 0}｜失敗：${status.failed || 0}｜上次成功：${last}｜裝置：${status.device_id}`;
+    }
+  } catch (e) {
+    console.error("Failed to load sync status:", e);
+  }
+}
+
+async function syncPracticeEvents() {
+  btnPracticeSync.disabled = true;
+  syncButtonLabel.textContent = "同步中";
+  try {
+    const response = await fetch("/api/practice/sync", { method: "POST" });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || "同步失敗");
+    const data = result.data;
+    alert(`同步完成：新增 ${data.created}、重複 ${data.duplicate}、拒絕 ${data.rejected}、衝突 ${data.conflict}`);
+  } catch (e) {
+    alert(`同步未完成：${e.message}`);
+  } finally {
+    btnPracticeSync.disabled = false;
+    syncButtonLabel.textContent = "同步";
+    updatePracticeSyncStatus();
   }
 }
 
@@ -1016,6 +1106,18 @@ async function fetchConfigSettings() {
     if (geminiModelSelect && config.gemini_model) {
       geminiModelSelect.value = config.gemini_model;
     }
+    if (platformBaseUrlInput) platformBaseUrlInput.value = config.platform_base_url || "http://127.0.0.1:5050";
+    if (platformTokenInput) {
+      platformTokenInput.value = "";
+      platformTokenInput.placeholder = config.platform_token_set ? "Token 已安全設定（留空不變更）" : "請貼上 Bearer Token";
+    }
+    if (platformTokenHelp) {
+      const source = config.platform_token_source === "environment" ? "環境變數" : "Windows Credential Manager";
+      platformTokenHelp.textContent = config.platform_token_set
+        ? `Token 已由${source}提供；不會寫入設定檔或資料庫。`
+        : "Token 會保存於 Windows Credential Manager，不寫入設定檔或資料庫。";
+    }
+    updatePracticeSyncStatus();
   } catch (e) {
     console.error("Failed to fetch API key status", e);
   }
@@ -1025,6 +1127,8 @@ async function fetchConfigSettings() {
 async function saveConfigSettings() {
   const apiKey = geminiKeyInput.value.strip ? geminiKeyInput.value.strip() : geminiKeyInput.value.trim();
   const geminiModel = geminiModelSelect ? geminiModelSelect.value : "gemini-3.1-flash-lite";
+  const platformBaseUrl = platformBaseUrlInput ? platformBaseUrlInput.value.trim() : "";
+  const platformToken = platformTokenInput ? platformTokenInput.value.trim() : "";
 
   try {
     const response = await fetch("/api/settings/config", {
@@ -1032,16 +1136,25 @@ async function saveConfigSettings() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         gemini_api_key: apiKey,
-        gemini_model: geminiModel
+        gemini_model: geminiModel,
+        platform_base_url: platformBaseUrl,
+        platform_token: platformToken
       })
     });
     const result = await response.json();
     if (result.success) {
       geminiKeyInput.value = "";
+      if (platformTokenInput) platformTokenInput.value = "";
       fetchConfigSettings();
+      return true;
+    } else {
+      alert(result.error || "設定儲存失敗");
+      return false;
     }
   } catch (e) {
     console.error("Failed to save config key:", e);
+    alert("設定儲存失敗：無法連接本機服務。");
+    return false;
   }
 }
 
@@ -1719,7 +1832,8 @@ function checkSpellingSentenceCorrect() {
     }
     spellingZone.classList.add("all-correct-pulse");
     setTimeout(() => spellingZone.classList.remove("all-correct-pulse"), 1000);
-    logPracticeResult(true);
+    const typedAnswer = Array.from(blocks).map(block => block.querySelector(".word-input").value).join(" ");
+    logPracticeResult(true, typedAnswer);
 
     if (currentLanguage === "vi") {
       isAnswerShowing = true;
@@ -1730,7 +1844,8 @@ function checkSpellingSentenceCorrect() {
     }
   } else {
     resetPetStreak();
-    logPracticeResult(false);
+    const typedAnswer = Array.from(blocks).map(block => block.querySelector(".word-input").value).join(" ");
+    logPracticeResult(false, typedAnswer);
   }
   return allCorrect;
 }
@@ -1879,7 +1994,7 @@ function checkScrambleFinished() {
       }
       scrambleSlots.classList.add("all-correct-pulse");
       setTimeout(() => scrambleSlots.classList.remove("all-correct-pulse"), 1000);
-      logPracticeResult(true);
+      logPracticeResult(true, scrambleSelections.map(item => item.word).join(" "));
 
       if (currentLanguage === "vi") {
         isAnswerShowing = true;
@@ -1892,7 +2007,7 @@ function checkScrambleFinished() {
       resetPetStreak();
       scrambleSlots.classList.add("error-pulse");
       setTimeout(() => scrambleSlots.classList.remove("error-pulse"), 800);
-      logPracticeResult(false);
+      logPracticeResult(false, scrambleSelections.map(item => item.word).join(" "));
     }
   }
 }
@@ -2027,6 +2142,17 @@ function selectToeicOption(selectedOption) {
   const indexInChunk = currentToeicIndex % 50;
   const question = toeicQuestions[indexInChunk];
   const correctAnswer = question.answer; // 'A', 'B', 'C', or 'D'
+  queuePracticeEvent({
+    sentence_id: `en-toeic-part5-${question.id}`,
+    language: "en",
+    exercise_type: "toeic_part5",
+    sentence_text: question.question,
+    translation_text: question.chinese || null,
+    user_answer: selectedOption,
+    is_correct: selectedOption === correctAnswer,
+    audio_play_count: 0,
+    revealed_answer: false
+  });
 
   // Disable all buttons and show colors
   toeicOptButtons.forEach(btn => {
@@ -2234,6 +2360,7 @@ function loadToeicPart2Question() {
   // Load audio source and reset audio player state
   audioPart2Player.pause();
   audioPart2Player.currentTime = 0;
+  currentPart2AudioPlayCount = 0;
   audioPart2Player.src = `/api/toeic/part2/questions/${question.id}/audio`;
   
   btnPart2Play.innerHTML = '<i class="fa-solid fa-play"></i>';
@@ -2249,6 +2376,7 @@ function loadToeicPart2Question() {
 
 function playPart2Audio() {
   audioPart2Player.play().then(() => {
+    currentPart2AudioPlayCount++;
     btnPart2Play.innerHTML = '<i class="fa-solid fa-pause"></i>';
     toeicPart2StatusText.textContent = "播放中...";
   }).catch(err => {
@@ -2278,6 +2406,18 @@ function selectPart2Option(selectedOption) {
   const indexInChunk = currentPart2Index % 50;
   const question = toeicPart2Questions[indexInChunk];
   const correctAnswer = question.answer; // 'A', 'B', or 'C'
+  queuePracticeEvent({
+    sentence_id: `en-toeic-part2-${question.id}`,
+    language: "en",
+    exercise_type: "toeic_part2",
+    sentence_text: question.question,
+    translation_text: question.chinese || null,
+    user_answer: selectedOption,
+    is_correct: selectedOption === correctAnswer,
+    audio_play_count: currentPart2AudioPlayCount,
+    revealed_answer: false
+  });
+  currentPart2AudioPlayCount = 0;
 
   // Disable all buttons and show colors
   toeicPart2OptButtons.forEach(btn => {
@@ -2777,6 +2917,7 @@ function registerEventListeners() {
   });
 
   btnReset.addEventListener("click", resetCurrentInputs);
+  btnPracticeSync.addEventListener("click", syncPracticeEvents);
   
   btnSpeak.addEventListener("click", () => {
     if (currentMode === "toeic") {
@@ -2831,9 +2972,13 @@ function registerEventListeners() {
   voiceModalClose.addEventListener("click", () => voiceModal.classList.remove("show"));
   reportModalClose.addEventListener("click", () => reportModal.classList.remove("show"));
   
-  btnVoiceClose.addEventListener("click", () => {
-    saveConfigSettings(); // Save Gemini API Key if changed
-    voiceModal.classList.remove("show");
+  btnVoiceClose.addEventListener("click", async () => {
+    btnVoiceClose.disabled = true;
+    btnVoiceClose.textContent = "儲存中...";
+    const saved = await saveConfigSettings();
+    btnVoiceClose.disabled = false;
+    btnVoiceClose.textContent = "儲存並關閉";
+    if (saved) voiceModal.classList.remove("show");
   });
 
   window.addEventListener("click", (e) => {

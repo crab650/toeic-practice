@@ -3,6 +3,7 @@ from flask import Flask
 from .config import BASE_DIR
 from .db import init_db
 from .routes.pet import pet_bp
+from .routes.practice_sync import practice_sync_bp
 from .routes.settings import settings_bp
 from .routes.toeic_part2 import toeic_part2_bp
 from .routes.toeic_part5 import toeic_part5_bp
@@ -16,6 +17,7 @@ def create_app():
     app.register_blueprint(web_bp)
     app.register_blueprint(units_bp)
     app.register_blueprint(pet_bp)
+    app.register_blueprint(practice_sync_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(toeic_part5_bp)
     app.register_blueprint(toeic_part2_bp)

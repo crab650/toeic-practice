@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import sys
+import uuid
 
 # Ensure console supports utf-8 output on Windows
 if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
@@ -125,6 +126,66 @@ def init_db():
             FOREIGN KEY (sentence_id) REFERENCES sentences(id) ON DELETE CASCADE
         )
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS app_installation (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            device_id TEXT UNIQUE NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS practice_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT UNIQUE NOT NULL,
+            legacy_history_id INTEGER UNIQUE,
+            platform_user_id TEXT,
+            device_id TEXT NOT NULL,
+            sentence_id TEXT NOT NULL,
+            language TEXT NOT NULL,
+            exercise_type TEXT NOT NULL,
+            sentence_text TEXT NOT NULL,
+            translation_text TEXT,
+            user_answer TEXT,
+            is_correct INTEGER NOT NULL,
+            audio_play_count INTEGER NOT NULL DEFAULT 0,
+            revealed_answer INTEGER NOT NULL DEFAULT 0,
+            occurred_at TEXT NOT NULL,
+            timezone TEXT NOT NULL,
+            sync_status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (sync_status IN ('pending', 'synced', 'failed')),
+            sync_attempts INTEGER NOT NULL DEFAULT 0,
+            last_sync_error TEXT,
+            platform_log_id TEXT,
+            synced_at TEXT,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_practice_events_sync_queue
+        ON practice_events (sync_status, created_at, id)
+    ''')
+    cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_practice_events_platform_user
+        ON practice_events (platform_user_id, sync_status)
+    ''')
+    try:
+        cursor.execute("ALTER TABLE practice_events ADD COLUMN legacy_history_id INTEGER")
+    except sqlite3.OperationalError:
+        pass
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_practice_events_legacy_history
+        ON practice_events (legacy_history_id)
+        WHERE legacy_history_id IS NOT NULL
+    ''')
+
+    cursor.execute("SELECT device_id FROM app_installation WHERE id = 1")
+    if not cursor.fetchone():
+        cursor.execute(
+            "INSERT INTO app_installation (id, device_id, created_at) VALUES (1, ?, ?)",
+            (str(uuid.uuid4()), __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()),
+        )
 
     for column_sql in [
         "ALTER TABLE practice_history ADD COLUMN audio_play_count INTEGER DEFAULT 0",

@@ -52,6 +52,7 @@
       </div>
 
       <div class="header-right">
+        <button id="btn-practice-sync" class="text-btn" title="將待同步練習批次上傳"><i class="fa-solid fa-cloud-arrow-up"></i> <span id="sync-button-label">同步</span> <span id="sync-pending-count">0</span></button>
         <button id="btn-report" class="text-btn" title="學習報表與熱力圖"><i class="fa-solid fa-chart-simple"></i> 報表</button>
         <button id="btn-tts-settings" class="text-btn" title="語音與金鑰設定"><i class="fa-solid fa-gears"></i> 設定</button>
         <button id="btn-import" class="accent-btn" title="導入 AI 句子"><i class="fa-solid fa-file-import"></i> 導入</button>
@@ -345,6 +346,18 @@
             <option value="gemini-2.5-flash-lite">舊版備用（2.5 Flash-Lite）</option>
           </select>
           <p class="import-help" style="font-size: 0.75rem; margin-top: 4px;">建議平常練習英文解析使用 Flash-Lite，超出免費額度時程式會提示稍後再試。</p>
+        </div>
+        <div class="form-group" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
+          <label for="platform-base-url-input">學習平台 Base URL：</label>
+          <input type="url" id="platform-base-url-input" class="form-control" placeholder="http://127.0.0.1:5050">
+        </div>
+        <div class="form-group">
+          <label for="platform-token-input">學習平台 Token：</label>
+          <input type="password" id="platform-token-input" class="form-control" placeholder="Bearer Token">
+          <p id="platform-token-help" class="import-help" style="font-size: 0.75rem; margin-top: 4px;">Token 會保存於 Windows Credential Manager，不寫入設定檔或資料庫。</p>
+        </div>
+        <div class="form-group">
+          <div id="sync-status-detail" class="import-help">尚未讀取同步狀態</div>
         </div>
       </div>
       <div class="modal-footer">
