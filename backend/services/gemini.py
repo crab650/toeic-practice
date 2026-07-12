@@ -92,12 +92,46 @@ Do not include any markdown fences (like ```json) or explanation text outside th
     return call_gemini(api_key, model_name, prompt)
 
 
+def is_vietnamese(text):
+    if not text:
+        return False
+    # Vietnamese-specific diacritics
+    vi_chars = set("đáàảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệíìỉĩịóòỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ")
+    return any(c in vi_chars for c in text.lower())
+
+
 def explain_sentence(api_key, model_name, sentence_data):
-    prompt = f"""
+    sentence = sentence_data['english']
+    is_vi = is_vietnamese(sentence)
+
+    if is_vi:
+        prompt = f"""
+You are an expert Vietnamese teacher helping a Traditional Chinese speaker understand Vietnamese sentence grammar.
+Analyze this sentence for practical learning, not for a linguistics textbook.
+
+Vietnamese sentence: {sentence}
+Existing Traditional Chinese translation: {sentence_data.get('chinese', '')}
+
+Please output JSON with exactly these keys:
+"chinese", "grammar_note", "vocabulary_note", "common_mistakes", "example".
+
+Requirements:
+- Use Traditional Chinese.
+- "chinese": a natural Traditional Chinese translation.
+- "grammar_note": explain the sentence structure, grammar particles, classifiers (lượng từ), tenses (like đã, đang, sẽ), pronoun usage (like tôi, bạn, anh, chị), and why the word order works.
+- "vocabulary_note": 必須詳細條列出該越南語句子中的「每一個單字與詞彙」（包含代名詞、助詞、量詞、虛詞等，絕對不可遺漏任何一個單字）。格式必須為清晰的條列，例如：「[單字] - [繁體中文意思]（詞性/說明）」，讓學習者能完全看懂每個單字的含意。
+- "common_mistakes": list likely mistakes a learner may make with this sentence (such as wrong pronouns, misplaced modifiers, or pronunciation tones).
+- "example": provide one short similar Vietnamese sentence and its Traditional Chinese translation.
+- Keep each field concise but useful.
+
+Do not include markdown fences or any text outside the JSON object.
+"""
+    else:
+        prompt = f"""
 You are an expert English teacher helping a Traditional Chinese speaker understand sentence grammar.
 Analyze this sentence for practical learning, not for a linguistics textbook.
 
-English sentence: {sentence_data['english']}
+English sentence: {sentence}
 Existing Traditional Chinese translation: {sentence_data.get('chinese', '')}
 
 Please output JSON with exactly these keys:
@@ -119,7 +153,32 @@ Do not include markdown fences or any text outside the JSON object.
 
 def lookup_word_pronunciation(api_key, model_name, word, sentence=""):
     context_line = f"Context sentence: {sentence}" if sentence else "No context sentence provided."
-    prompt = f"""
+    is_vi = is_vietnamese(word) or is_vietnamese(sentence)
+
+    if is_vi:
+        prompt = f"""
+You are an expert Vietnamese pronunciation coach for Traditional Chinese speakers.
+Analyze the word/phrase below and provide pronunciation help (including tones).
+
+Vietnamese word/phrase: {word}
+{context_line}
+
+Please output JSON with exactly these keys:
+"word", "ipa", "syllables", "stress", "meaning_zh", "pronunciation_note", "example".
+
+Requirements:
+- Use Traditional Chinese except the Vietnamese word/phrase and example sentence.
+- "ipa": provide phonetic guide or spelling (e.g. Northern or Southern pronunciation differences, tones like Sắc, Huyền, Hỏi, Ngã, Nặng, Ngang).
+- "syllables": split the word/phrase into syllables/morphemes if applicable.
+- "stress": explain the tone of the syllable (e.g. Hỏi tone, Sắc tone, etc.) and tone contours.
+- "meaning_zh": explain the meaning that fits the context if a context sentence is provided.
+- "pronunciation_note": practical tips for pronouncing this word, especially tone transitions and vowel lengths for Chinese speakers.
+- "example": one short Vietnamese example sentence plus Traditional Chinese translation.
+
+Do not include markdown fences or any text outside the JSON object.
+"""
+    else:
+        prompt = f"""
 You are an expert English pronunciation coach for Traditional Chinese speakers.
 Analyze the word below and provide IPA and pronunciation help.
 

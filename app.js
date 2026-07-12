@@ -2,6 +2,7 @@
 
 // App State
 let currentMode = "sentence"; // "sentence", "toeic" (Part 5), or "toeic-part2" (Part 2)
+let currentLanguage = localStorage.getItem("preferred_language") || "en"; // "en" or "vi"
 let units = [];
 let currentSentences = [];
 let activeUnitId = null;
@@ -25,6 +26,8 @@ let currentFilter = "all"; // "all", "new", "review", "mastered"
 // UI Settings
 let isScrambleMode = false;
 let isAnswerShowing = false;
+let currentAudioPlayCount = 0;
+let currentRevealedAnswer = false;
 let autoSpeak = true;
 let correctSpeak = true;
 let selectedVoiceName = "";
@@ -102,15 +105,22 @@ const PET_GROWTH_STAGES = [
 const tabSentence = document.getElementById("tab-sentence");
 const tabToeic = document.getElementById("tab-toeic");
 const tabToeicPart2 = document.getElementById("tab-toeic-part2");
+const langSelectorContainer = document.getElementById("lang-selector-container");
+const btnLangEn = document.getElementById("btn-lang-en");
+const btnLangVi = document.getElementById("btn-lang-vi");
 const unitSelector = document.getElementById("unit-selector");
 const toeicFilter = document.getElementById("toeic-filter");
 const toeicCategoryFilter = document.getElementById("toeic-category-filter");
 const progressIndicator = document.getElementById("progress-indicator");
 const progressBarFill = document.getElementById("progress-bar-fill");
 const clockDisplay = document.getElementById("clock-display");
+const statsTodayCorrect = document.getElementById("stats-today-correct");
+const statsTodayTotal = document.getElementById("stats-today-total");
+const statsTotalCount = document.getElementById("stats-total-count");
 const modeScrambleToggle = document.getElementById("mode-scramble-toggle");
 const btnBack = document.getElementById("btn-back");
 const btnReset = document.getElementById("btn-reset");
+const btnShowAnswer = document.getElementById("btn-show-answer");
 const btnSpeak = document.getElementById("btn-speak");
 const btnImport = document.getElementById("btn-import");
 const btnTtsSettings = document.getElementById("btn-tts-settings");
@@ -129,6 +139,7 @@ const scrambleOptions = document.getElementById("scramble-options");
 const sentenceModeToggle = document.getElementById("sentence-mode-toggle");
 const sentenceAiPanel = document.getElementById("sentence-ai-panel");
 const btnSentenceExplain = document.getElementById("btn-sentence-explain");
+const btnSentenceExplainRefresh = document.getElementById("btn-sentence-explain-refresh");
 const sentenceExplainBtnText = document.getElementById("sentence-explain-btn-text");
 const sentenceAiResult = document.getElementById("sentence-ai-result");
 const sentenceAiContent = document.getElementById("sentence-ai-content");
@@ -165,14 +176,18 @@ const toeicPart2Explanation = document.getElementById("toeic-part2-explanation")
 // Modals
 const importModal = document.getElementById("import-modal");
 const voiceModal = document.getElementById("voice-modal");
+const reportModal = document.getElementById("report-modal");
 const modalClose = document.getElementById("modal-close");
 const voiceModalClose = document.getElementById("voice-modal-close");
+const reportModalClose = document.getElementById("report-modal-close");
+const btnReport = document.getElementById("btn-report");
 const btnImportCancel = document.getElementById("btn-import-cancel");
 const btnImportSubmit = document.getElementById("btn-import-submit");
 const btnVoiceClose = document.getElementById("btn-voice-close");
 
 const importTextarea = document.getElementById("import-textarea");
 const importUnitName = document.getElementById("import-unit-name");
+const importLangSelect = document.getElementById("import-lang-select");
 const voiceSelect = document.getElementById("voice-select");
 const voiceSpeed = document.getElementById("voice-speed");
 const speedVal = document.getElementById("speed-val");
@@ -205,6 +220,7 @@ let scrambleSelections = []; // Holds index of selected options in scramble mode
 async function init() {
   // 1. Load configuration settings from LocalStorage (UI states)
   loadSettingsFromLocalStorage();
+  updateLangSelectorUI();
   await loadPetState();
   renderPet();
   setInterval(() => {
@@ -215,6 +231,9 @@ async function init() {
   // 2. Setup Clock
   updateClock();
   setInterval(updateClock, 60000);
+  
+  // Update practice stats
+  updatePracticeStatsUI();
 
   // 3. Setup Speech Voices
   setupSpeechVoices();
@@ -237,34 +256,304 @@ function updateClock() {
   clockDisplay.textContent = `${hours}:${minutes}`;
 }
 
+async function updatePracticeStatsUI() {
+  try {
+    const response = await fetch(`/api/practice/stats?lang=${currentLanguage}`);
+    const data = await response.json();
+    if (data && !data.error) {
+      if (statsTodayCorrect) statsTodayCorrect.textContent = data.today_correct_count;
+      if (statsTodayTotal) statsTodayTotal.textContent = data.today_count;
+      if (statsTotalCount) statsTotalCount.textContent = data.total_count;
+    }
+  } catch (e) {
+    console.error("Failed to update practice stats UI:", e);
+  }
+}
+
+async function logPracticeResult(isCorrect) {
+  if (!currentSentences || currentSentences.length === 0 || currentSentenceIndex < 0) return;
+  const sentence = currentSentences[currentSentenceIndex];
+  
+  const playCountToSend = currentAudioPlayCount;
+  const revealedAnswerToSend = currentRevealedAnswer;
+  
+  currentAudioPlayCount = 0;
+  currentRevealedAnswer = false;
+
+  try {
+    const response = await fetch("/api/practice/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sentence_id: sentence.id,
+        is_correct: isCorrect,
+        audio_play_count: playCountToSend,
+        revealed_answer: revealedAnswerToSend
+      })
+    });
+    const result = await response.json();
+    if (result.success) {
+      updatePracticeStatsUI();
+    }
+  } catch (e) {
+    console.error("Failed to log practice result:", e);
+  }
+}
+
+async function openReportModal() {
+  if (reportModal) {
+    reportModal.classList.add("show");
+  }
+  
+  // Render loading state in summary table
+  const summaryBody = document.getElementById("report-summary-body");
+  if (summaryBody) {
+    summaryBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 20px;">正在載入學習數據與報表...</td></tr>`;
+  }
+  
+  // Render loading state in heatmap
+  const heatmapGrid = document.getElementById("practice-heatmap");
+  if (heatmapGrid) {
+    heatmapGrid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: var(--text-secondary); padding: 20px; font-size: 0.9rem;">正在繪製熱力圖...</div>`;
+  }
+
+  try {
+    const response = await fetch("/api/practice/report-data");
+    const data = await response.json();
+    if (data && !data.error) {
+      renderHeatmap(data.heatmap || {});
+      renderDailySummary(data.summary || []);
+    } else {
+      if (summaryBody) {
+        summaryBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ff7675; padding: 20px;">載入報表數據失敗：${data.error || "未知錯誤"}</td></tr>`;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load report data:", e);
+    if (summaryBody) {
+      summaryBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ff7675; padding: 20px;">無法連接伺服器載入報表數據。</td></tr>`;
+    }
+  }
+}
+
+function renderHeatmap(heatmapData) {
+  const heatmapGrid = document.getElementById("practice-heatmap");
+  const heatmapMonths = document.getElementById("heatmap-months");
+  if (!heatmapGrid) return;
+  heatmapGrid.innerHTML = "";
+  if (heatmapMonths) heatmapMonths.innerHTML = "";
+  
+  // Generate past 180 days (approx 6 months)
+  const today = new Date();
+  const days = [];
+  
+  // Go back 180 days, aligned to start on Sunday
+  const startDate = new Date();
+  startDate.setDate(today.getDate() - 180);
+  const startDayOfWeek = startDate.getDay(); // 0 is Sunday
+  startDate.setDate(startDate.getDate() - startDayOfWeek);
+  
+  // Generate all days up to today
+  const currentDate = new Date(startDate);
+  while (currentDate <= today) {
+    days.push(new Date(currentDate));
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  
+  // Render calendar cells
+  let lastMonth = -1;
+  let weekIndex = 0;
+  
+  days.forEach(date => {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    
+    // If it is Sunday (start of a new week column), check if month changed
+    if (date.getDay() === 0) {
+      const currentMonth = date.getMonth(); // 0-11
+      if (currentMonth !== lastMonth) {
+        lastMonth = currentMonth;
+        if (heatmapMonths) {
+          const monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+          const monthLabel = document.createElement("span");
+          monthLabel.style.position = "absolute";
+          // 12px cell + 3px gap = 15px per week column
+          monthLabel.style.left = `${weekIndex * 15}px`;
+          monthLabel.style.fontWeight = "600";
+          monthLabel.style.color = "var(--text-secondary)";
+          monthLabel.textContent = monthNames[currentMonth];
+          heatmapMonths.appendChild(monthLabel);
+        }
+      }
+      weekIndex++;
+    }
+    
+    const count = heatmapData[dateStr] || 0;
+    
+    const cell = document.createElement("div");
+    cell.className = "heatmap-day";
+    
+    if (count === 0) cell.classList.add("level-0");
+    else if (count <= 5) cell.classList.add("level-1");
+    else if (count <= 15) cell.classList.add("level-2");
+    else if (count <= 30) cell.classList.add("level-3");
+    else cell.classList.add("level-4");
+    
+    cell.title = `${dateStr} : 練習 ${count} 次`;
+    heatmapGrid.appendChild(cell);
+  });
+}
+
+function renderDailySummary(summaryData) {
+  const summaryBody = document.getElementById("report-summary-body");
+  if (!summaryBody) return;
+  summaryBody.innerHTML = "";
+  
+  if (!summaryData || summaryData.length === 0) {
+    summaryBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 20px;">尚無練習記錄，開始練習來產生報表吧！</td></tr>`;
+    return;
+  }
+  
+  summaryData.forEach((row, idx) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="padding: 10px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05);">${row.date}</td>
+      <td style="padding: 10px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05);"><span class="lang-badge ${row.language}">${row.language === "vi" ? "🇻🇳 越文" : "🇬🇧 英文"}</span></td>
+      <td style="padding: 10px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); text-align: center; font-weight: 600; color: var(--text-primary);">${row.total_attempts}</td>
+      <td style="padding: 10px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); text-align: center; color: #ff7675;">${row.error_attempts}</td>
+      <td style="padding: 10px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); text-align: center; color: #74b9ff;">${row.audio_plays}</td>
+      <td style="padding: 10px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); text-align: center;">
+        <button class="speak-btn btn-toggle-detail" data-date="${row.date}" data-lang="${row.language}" style="padding: 4px 8px; font-size: 0.8rem; border-radius: 4px;"><i class="fa-solid fa-chevron-down"></i> 展開</button>
+      </td>
+    `;
+    summaryBody.appendChild(tr);
+    
+    // Create the detail row (hidden by default)
+    const detailTr = document.createElement("tr");
+    detailTr.className = "detail-row hidden";
+    detailTr.id = `detail-${row.date}-${row.language}`;
+    detailTr.innerHTML = `
+      <td colspan="6" style="padding: 0; background: rgba(0, 0, 0, 0.15);">
+        <div class="detail-container">
+          <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;">正在載入練習明細...</div>
+        </div>
+      </td>
+    `;
+    summaryBody.appendChild(detailTr);
+  });
+  
+  // Add event listeners to toggle buttons
+  summaryBody.querySelectorAll(".btn-toggle-detail").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const date = btn.getAttribute("data-date");
+      const lang = btn.getAttribute("data-lang");
+      toggleDetailRow(btn, date, lang);
+    });
+  });
+}
+
+async function toggleDetailRow(btn, date, lang) {
+  const detailTr = document.getElementById(`detail-${date}-${lang}`);
+  if (!detailTr) return;
+  
+  const isHidden = detailTr.classList.contains("hidden");
+  if (isHidden) {
+    detailTr.classList.remove("hidden");
+    btn.innerHTML = '<i class="fa-solid fa-chevron-up"></i> 收合';
+    
+    try {
+      const response = await fetch(`/api/practice/details?date=${date}&lang=${lang}`);
+      const data = await response.json();
+      const container = detailTr.querySelector(".detail-container");
+      
+      if (!data.sentences || data.sentences.length === 0) {
+        container.innerHTML = `<div style="color: var(--text-secondary); font-size: 0.85rem; padding: 4px 0;">當天無此語系的詳細明細。</div>`;
+        return;
+      }
+      
+      let html = `<div style="font-weight: 600; color: var(--accent-primary); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px; font-size: 0.85rem;">當日練習句子明細：</div>`;
+      data.sentences.forEach(s => {
+        html += `
+          <div class="detail-item" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 0.85rem;">
+            <div style="flex: 1; margin-right: 12px; text-align: left;">
+              <div style="font-weight: 500; color: var(--text-primary); font-size: 0.9rem;">${s.english}</div>
+              <div style="color: var(--text-secondary); margin-top: 2px;">${s.chinese}</div>
+              <div style="font-size: 0.75rem; color: var(--accent-primary); margin-top: 2px; opacity: 0.8;">單元：${s.unit_name}</div>
+            </div>
+            <div style="text-align: right; color: var(--text-secondary); min-width: 140px; font-size: 0.8rem;">
+              <div>練習: <span style="font-weight:600; color:#fff;">${s.correct_count + s.incorrect_count}</span> 次</div>
+              <div style="font-size: 0.75rem; color: #ff7675; margin-top: 1px;">答錯: ${s.incorrect_count} 次</div>
+              <div style="font-size: 0.75rem; color: #74b9ff; margin-top: 1px;">播音: ${s.audio_play_count} 次</div>
+              <div style="font-size: 0.75rem; color: #ffeaa7; margin-top: 1px;">看答案: ${s.revealed_answer_count > 0 ? "有" : "無"}</div>
+            </div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    } catch(e) {
+      console.error("Failed to load daily details:", e);
+      detailTr.querySelector(".detail-container").innerHTML = `<div style="color: #ff7675; font-size: 0.85rem;">載入明細失敗。</div>`;
+    }
+  } else {
+    detailTr.classList.add("hidden");
+    btn.innerHTML = '<i class="fa-solid fa-chevron-down"></i> 展開';
+  }
+}
+
 // Set up voices dropdown
 function setupSpeechVoices() {
   const voices = window.speechSynthesis.getVoices();
   const englishVoices = voices.filter(v => v.lang.startsWith("en-") || v.lang.startsWith("en_"));
+  const vietnameseVoices = voices.filter(v => v.lang.startsWith("vi-") || v.lang.startsWith("vi_"));
   
   voiceSelect.innerHTML = "";
   
-  if (englishVoices.length === 0) {
+  if (englishVoices.length === 0 && vietnameseVoices.length === 0) {
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "無可用英文語音 (系統預設)";
+    opt.textContent = "無可用英文/越南文語音 (系統預設)";
     voiceSelect.appendChild(opt);
     return;
   }
 
-  englishVoices.forEach(voice => {
-    const option = document.createElement("option");
-    option.value = voice.name;
-    const label = `${voice.name} (${voice.lang})`;
-    option.textContent = label;
-    if (voice.name === selectedVoiceName) {
-      option.selected = true;
-    }
-    voiceSelect.appendChild(option);
-  });
+  if (englishVoices.length > 0) {
+    const group = document.createElement("optgroup");
+    group.label = "英文語音 (English Voices)";
+    englishVoices.forEach(voice => {
+      const option = document.createElement("option");
+      option.value = voice.name;
+      option.textContent = `${voice.name} (${voice.lang})`;
+      if (voice.name === selectedVoiceName) {
+        option.selected = true;
+      }
+      group.appendChild(option);
+    });
+    voiceSelect.appendChild(group);
+  }
 
-  if (!selectedVoiceName && englishVoices.length > 0) {
-    selectedVoiceName = englishVoices[0].name;
+  if (vietnameseVoices.length > 0) {
+    const group = document.createElement("optgroup");
+    group.label = "越南文語音 (Vietnamese Voices)";
+    vietnameseVoices.forEach(voice => {
+      const option = document.createElement("option");
+      option.value = voice.name;
+      option.textContent = `${voice.name} (${voice.lang})`;
+      if (voice.name === selectedVoiceName) {
+        option.selected = true;
+      }
+      group.appendChild(option);
+    });
+    voiceSelect.appendChild(group);
+  }
+
+  if (!selectedVoiceName) {
+    if (englishVoices.length > 0) {
+      selectedVoiceName = englishVoices[0].name;
+    } else if (vietnameseVoices.length > 0) {
+      selectedVoiceName = vietnameseVoices[0].name;
+    }
   }
 }
 
@@ -312,6 +601,11 @@ function loadSettingsFromLocalStorage() {
       currentMode = storedMode;
     }
 
+    const storedLang = localStorage.getItem("preferred_language");
+    if (storedLang) {
+      currentLanguage = storedLang;
+    }
+
     const storedToeicIdx = localStorage.getItem("current_toeic_index");
     if (storedToeicIdx) {
       currentToeicIndex = parseInt(storedToeicIdx, 10);
@@ -333,6 +627,7 @@ function saveSettingsToLocalStorage() {
     localStorage.setItem("auto_speak", autoSpeak);
     localStorage.setItem("correct_speak", correctSpeak);
     localStorage.setItem("current_mode", currentMode);
+    localStorage.setItem("preferred_language", currentLanguage);
     localStorage.setItem("current_toeic_index", currentToeicIndex);
     localStorage.setItem("current_part2_index", currentPart2Index);
     if (activeUnitId) localStorage.setItem("active_unit_id", activeUnitId);
@@ -750,6 +1045,31 @@ async function saveConfigSettings() {
   }
 }
 
+/* ----------------- Language Selection ----------------- */
+
+function updateLangSelectorUI() {
+  if (currentLanguage === "vi") {
+    btnLangVi.classList.add("active");
+    btnLangEn.classList.remove("active");
+  } else {
+    btnLangEn.classList.add("active");
+    btnLangVi.classList.remove("active");
+  }
+}
+
+function changeLanguage(lang) {
+  if (currentLanguage === lang) return;
+  currentLanguage = lang;
+  updateLangSelectorUI();
+  saveSettingsToLocalStorage();
+  updatePracticeStatsUI();
+  
+  // Reload units for the new language
+  activeUnitId = null;
+  currentSentenceIndex = 0;
+  fetchUnits();
+}
+
 /* ----------------- Tab Switching ----------------- */
 
 function switchTab(mode) {
@@ -778,6 +1098,8 @@ function switchTab(mode) {
     toeicHelps.forEach(el => el.classList.remove("hidden"));
 
     // Adjust visibility
+    langSelectorContainer.classList.add("hidden");
+    if (btnShowAnswer) btnShowAnswer.classList.add("hidden");
     unitSelector.classList.add("hidden");
     toeicFilter.classList.remove("hidden");
     toeicCategoryFilter.classList.remove("hidden");
@@ -801,6 +1123,8 @@ function switchTab(mode) {
     toeicHelps.forEach(el => el.classList.remove("hidden"));
 
     // Adjust visibility
+    langSelectorContainer.classList.add("hidden");
+    if (btnShowAnswer) btnShowAnswer.classList.add("hidden");
     unitSelector.classList.add("hidden");
     toeicFilter.classList.remove("hidden");
     toeicCategoryFilter.classList.add("hidden");
@@ -824,6 +1148,7 @@ function switchTab(mode) {
     toeicHelps.forEach(el => el.classList.add("hidden"));
 
     // Adjust visibility
+    langSelectorContainer.classList.remove("hidden");
     unitSelector.classList.remove("hidden");
     toeicFilter.classList.add("hidden");
     toeicCategoryFilter.classList.add("hidden");
@@ -844,10 +1169,14 @@ function switchTab(mode) {
 
 async function fetchUnits(selectUnitId = null) {
   try {
-    const response = await fetch("/api/units");
+    const response = await fetch(`/api/units?lang=${currentLanguage}`);
     units = await response.json();
 
-    if (units.length === 0) return;
+    if (units.length === 0) {
+      unitSelector.innerHTML = "<option value=''>無可用單元</option>";
+      currentSentences = [];
+      return;
+    }
 
     // Populate Selector Dropdown
     unitSelector.innerHTML = "";
@@ -899,6 +1228,48 @@ async function fetchSentences(unitId) {
   }
 }
 
+function renderClickableSentence(text, targetElement) {
+  targetElement.innerHTML = "";
+  if (currentLanguage !== "vi") {
+    targetElement.textContent = text;
+    return;
+  }
+
+  // Separate words and punctuation
+  const rawWords = text.trim().replace(/\s+/g, " ").split(" ");
+  rawWords.forEach((rawWord, index) => {
+    const match = rawWord.match(/^([\p{L}\p{N}'-]+)([^\p{L}\p{N}'-]*)$/u);
+    const wordPart = match ? match[1] : rawWord;
+    const punctPart = match ? match[2] : "";
+
+    if (wordPart) {
+      const wordSpan = document.createElement("span");
+      wordSpan.className = "clickable-word";
+      wordSpan.textContent = wordPart;
+      wordSpan.title = "點擊發音與查詢";
+      wordSpan.addEventListener("click", () => {
+        speakText(wordPart);
+        if (wordLookupInput) {
+          wordLookupInput.value = wordPart;
+          triggerWordLookup();
+        }
+      });
+      targetElement.appendChild(wordSpan);
+    }
+    
+    if (punctPart) {
+      const punctSpan = document.createElement("span");
+      punctSpan.className = "punctuation-mark-inline";
+      punctSpan.textContent = punctPart;
+      targetElement.appendChild(punctSpan);
+    }
+
+    if (index < rawWords.length - 1) {
+      targetElement.appendChild(document.createTextNode(" "));
+    }
+  });
+}
+
 function loadSentence() {
   if (currentSentences.length === 0) return;
 
@@ -912,21 +1283,33 @@ function loadSentence() {
 
   chinesePrompt.textContent = sentenceData.chinese;
   chinesePrompt.classList.remove("hidden");
-  englishAnswer.textContent = sentenceData.english;
+  renderClickableSentence(sentenceData.english, englishAnswer);
   
   isAnswerShowing = false;
+  currentAudioPlayCount = 0;
+  currentRevealedAnswer = false;
   answerHint.classList.add("hidden");
   explanationBox.classList.add("hidden");
+  if (btnShowAnswer) {
+    btnShowAnswer.innerHTML = '<i class="fa-solid fa-eye"></i> 顯示答案';
+    if (currentLanguage === "vi") {
+      btnShowAnswer.classList.remove("hidden");
+    } else {
+      btnShowAnswer.classList.add("hidden");
+    }
+  }
+  sentenceAiPanel.classList.remove("hidden");
   renderSavedSentenceAiNote(sentenceData);
   clearWordNote();
 
   // Load Status Tag
   updateStatusTags(sentenceData.status);
 
-  // Parse English sentence into words and punctuation
+  // Parse English/Vietnamese sentence into words and punctuation
   const rawWords = sentenceData.english.trim().replace(/\s+/g, " ").split(" ");
   processedWords = rawWords.map((rawWord, index) => {
-    const match = rawWord.match(/^([a-zA-Z0-9'-]+)([^a-zA-Z0-9'-]*)$/);
+    // Matches Unicode letters/numbers (including Vietnamese diacritics) and apostrophes/hyphens
+    const match = rawWord.match(/^([\p{L}\p{N}'-]+)([^\p{L}\p{N}'-]*)$/u);
     return {
       index: index,
       rawWord: rawWord,
@@ -943,6 +1326,7 @@ function loadSentence() {
 
   if (autoSpeak) {
     speakText(sentenceData.english);
+    currentAudioPlayCount = 1;
   }
 
   saveSettingsToLocalStorage();
@@ -983,12 +1367,27 @@ function noteRow(label, value) {
 
 function renderSentenceAiNote(note) {
   if (!sentenceAiResult || !sentenceAiContent || !note) return;
+
+  const labels = currentLanguage === "vi" ? {
+    translation: "中文翻譯",
+    grammar: "語法與代名詞解析",
+    vocabulary: "核心單字與片語",
+    mistakes: "易混淆與避坑提醒",
+    example: "推薦相似句"
+  } : {
+    translation: "Translation",
+    grammar: "Grammar",
+    vocabulary: "Vocabulary",
+    mistakes: "Common Mistakes",
+    example: "Example"
+  };
+
   sentenceAiContent.innerHTML = [
-    noteRow("Translation", note.chinese || note.ai_chinese),
-    noteRow("Grammar", note.grammar_note),
-    noteRow("Vocabulary", note.vocabulary_note),
-    noteRow("Common Mistakes", note.common_mistakes),
-    noteRow("Example", note.example || note.ai_example),
+    noteRow(labels.translation, note.chinese || note.ai_chinese),
+    noteRow(labels.grammar, note.grammar_note),
+    noteRow(labels.vocabulary, note.vocabulary_note),
+    noteRow(labels.mistakes, note.common_mistakes),
+    noteRow(labels.example, note.example || note.ai_example),
   ].join("");
   sentenceAiResult.classList.remove("hidden");
 }
@@ -996,15 +1395,23 @@ function renderSentenceAiNote(note) {
 function renderSavedSentenceAiNote(sentenceData) {
   if (!sentenceAiResult || !sentenceAiContent) return;
 
-  if (sentenceData.grammar_note || sentenceData.vocabulary_note || sentenceData.ai_chinese) {
+  const hasCache = !!(sentenceData.grammar_note || sentenceData.vocabulary_note || sentenceData.ai_chinese);
+
+  if (hasCache) {
     renderSentenceAiNote(sentenceData);
+    if (btnSentenceExplainRefresh) btnSentenceExplainRefresh.classList.remove("hidden");
   } else {
     sentenceAiResult.classList.add("hidden");
     sentenceAiContent.innerHTML = "";
+    if (btnSentenceExplainRefresh) btnSentenceExplainRefresh.classList.add("hidden");
   }
 
   if (sentenceExplainBtnText) {
-    sentenceExplainBtnText.textContent = sentenceData.grammar_note ? "Show Saved Notes" : "AI Sentence Notes";
+    if (currentLanguage === "vi") {
+      sentenceExplainBtnText.textContent = hasCache ? "顯示已存筆記" : "AI 越文句型解析";
+    } else {
+      sentenceExplainBtnText.textContent = hasCache ? "Show Saved Notes" : "AI Sentence Notes";
+    }
   }
 }
 
@@ -1028,23 +1435,36 @@ function clearWordNote() {
   if (wordLookupInput) wordLookupInput.value = "";
 }
 
-async function triggerSentenceAiExplain() {
+async function triggerSentenceAiExplain(options = {}) {
+  const force = options && options.force === true;
+
   if (currentMode !== "sentence" || currentSentences.length === 0) return;
 
   const sentenceData = currentSentences[currentSentenceIndex];
-  if (sentenceData.grammar_note || sentenceData.vocabulary_note) {
-    renderSentenceAiNote(sentenceData);
+  
+  if (!force && (sentenceData.grammar_note || sentenceData.vocabulary_note)) {
+    if (sentenceAiResult.classList.contains("hidden")) {
+      renderSentenceAiNote(sentenceData);
+      if (btnSentenceExplainRefresh) btnSentenceExplainRefresh.classList.remove("hidden");
+    } else {
+      sentenceAiResult.classList.add("hidden");
+    }
     return;
   }
 
-  sentenceExplainBtnText.textContent = "AI analyzing...";
+  sentenceExplainBtnText.textContent = currentLanguage === "vi" ? "AI 分析中..." : "AI analyzing...";
   btnSentenceExplain.disabled = true;
+  if (btnSentenceExplainRefresh) {
+    btnSentenceExplainRefresh.disabled = true;
+    btnSentenceExplainRefresh.classList.remove("hidden");
+    btnSentenceExplainRefresh.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+  }
 
   try {
     const response = await fetch(`/api/sentences/${sentenceData.id}/ai-explain`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({})
+      body: JSON.stringify({ force: force })
     });
     const result = await response.json();
 
@@ -1058,14 +1478,25 @@ async function triggerSentenceAiExplain() {
     sentenceData.vocabulary_note = note.vocabulary_note;
     sentenceData.common_mistakes = note.common_mistakes;
     sentenceData.ai_example = note.example;
+    
     renderSentenceAiNote(sentenceData);
-    sentenceExplainBtnText.textContent = "Show Saved Notes";
+    sentenceExplainBtnText.textContent = currentLanguage === "vi" ? "顯示已存筆記" : "Show Saved Notes";
+    if (btnSentenceExplainRefresh) {
+      btnSentenceExplainRefresh.classList.remove("hidden");
+    }
   } catch (e) {
     console.error("Sentence AI explain error:", e);
     alert(e.message || "AI sentence analysis failed");
-    sentenceExplainBtnText.textContent = "AI Sentence Notes";
+    sentenceExplainBtnText.textContent = currentLanguage === "vi" ? "AI 越文句型解析" : "AI Sentence Notes";
+    if (!sentenceData.grammar_note && btnSentenceExplainRefresh) {
+      btnSentenceExplainRefresh.classList.add("hidden");
+    }
   } finally {
     btnSentenceExplain.disabled = false;
+    if (btnSentenceExplainRefresh) {
+      btnSentenceExplainRefresh.disabled = false;
+      btnSentenceExplainRefresh.innerHTML = '<i class="fa-solid fa-rotate"></i>';
+    }
   }
 }
 
@@ -1135,6 +1566,22 @@ function setupSpellingMode() {
 
     block.appendChild(input);
     block.appendChild(underline);
+
+    if (currentLanguage === "vi") {
+      const speakerBtn = document.createElement("button");
+      speakerBtn.className = "word-speaker-btn";
+      speakerBtn.type = "button";
+      speakerBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+      speakerBtn.title = `朗讀單字: ${wordData.spellingTarget}`;
+      speakerBtn.addEventListener("mousedown", (e) => {
+        e.preventDefault(); // Keep focus in the input
+      });
+      speakerBtn.addEventListener("click", () => {
+        speakText(wordData.spellingTarget);
+      });
+      block.appendChild(speakerBtn);
+    }
+
     spellingZone.appendChild(block);
 
     if (wordData.punctuation) {
@@ -1164,8 +1611,8 @@ function focusWordBlock(index) {
 }
 
 function handleWordInput(e, input, block, wordData) {
-  const target = wordData.spellingTarget.toLowerCase();
-  const val = input.value.toLowerCase();
+  const target = wordData.spellingTarget.toLowerCase().normalize("NFC");
+  const val = input.value.toLowerCase().normalize("NFC");
 
   if (target.startsWith(val)) {
     block.classList.remove("error");
@@ -1191,7 +1638,7 @@ function handleWordKeydown(e, input, block, wordData) {
 
   if (e.key === " " || e.code === "Space") {
     e.preventDefault();
-    if (val.toLowerCase() === target.toLowerCase()) {
+    if (val.toLowerCase().normalize("NFC") === target.toLowerCase().normalize("NFC")) {
       block.classList.add("correct");
       const nextIndex = wordData.index + 1;
       focusWordBlock(nextIndex);
@@ -1256,7 +1703,7 @@ function checkSpellingSentenceCorrect() {
   blocks.forEach(block => {
     const input = block.querySelector(".word-input");
     const target = input.getAttribute("data-word-target");
-    if (input.value.toLowerCase() !== target.toLowerCase()) {
+    if (input.value.toLowerCase().normalize("NFC") !== target.toLowerCase().normalize("NFC")) {
       allCorrect = false;
       block.classList.add("error");
     }
@@ -1272,8 +1719,18 @@ function checkSpellingSentenceCorrect() {
     }
     spellingZone.classList.add("all-correct-pulse");
     setTimeout(() => spellingZone.classList.remove("all-correct-pulse"), 1000);
+    logPracticeResult(true);
+
+    if (currentLanguage === "vi") {
+      isAnswerShowing = true;
+      answerHint.classList.remove("hidden");
+      if (btnShowAnswer) {
+        btnShowAnswer.innerHTML = '<i class="fa-solid fa-eye-slash"></i> 隱藏答案';
+      }
+    }
   } else {
     resetPetStreak();
+    logPracticeResult(false);
   }
   return allCorrect;
 }
@@ -1306,6 +1763,7 @@ function setupScrambleMode() {
     card.className = "word-card";
     card.dataset.originalIndex = opt.originalIndex;
     card.dataset.optionIndex = arrayIndex;
+    card.dataset.word = opt.word;
     
     if (arrayIndex < 9) {
       const indexBadge = document.createElement("span");
@@ -1318,6 +1776,19 @@ function setupScrambleMode() {
     wordText.textContent = opt.word;
     card.appendChild(wordText);
 
+    if (currentLanguage === "vi") {
+      const miniSpeaker = document.createElement("span");
+      miniSpeaker.className = "card-speaker-icon";
+      miniSpeaker.innerHTML = '<i class="fa-solid fa-volume-high" style="font-size: 0.7rem; opacity: 0.6;"></i>';
+      miniSpeaker.title = `朗讀單字: ${opt.word}`;
+      miniSpeaker.addEventListener("click", (e) => {
+        e.stopPropagation(); // Don't trigger card selection
+        const speakWord = opt.word.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim();
+        speakText(speakWord);
+      });
+      card.appendChild(miniSpeaker);
+    }
+
     scrambleOptions.appendChild(card);
     card.addEventListener("click", () => selectScrambleCard(card));
   });
@@ -1327,7 +1798,7 @@ function selectScrambleCard(card) {
   if (card.classList.contains("selected")) return;
 
   const originalIndex = parseInt(card.dataset.originalIndex, 10);
-  const word = card.textContent.replace(/[1-9]/g, "").trim();
+  const word = card.dataset.word;
 
   card.classList.add("selected");
   scrambleSelections.push({
@@ -1363,7 +1834,24 @@ function renderScrambleSlots() {
     
     const badge = document.createElement("div");
     badge.className = "word-card";
-    badge.textContent = sel.word;
+    
+    const wordText = document.createElement("span");
+    wordText.textContent = sel.word;
+    badge.appendChild(wordText);
+    
+    if (currentLanguage === "vi") {
+      const miniSpeaker = document.createElement("span");
+      miniSpeaker.className = "card-speaker-icon";
+      miniSpeaker.innerHTML = '<i class="fa-solid fa-volume-high" style="font-size: 0.7rem; opacity: 0.6;"></i>';
+      miniSpeaker.title = `朗讀單字: ${sel.word}`;
+      miniSpeaker.addEventListener("click", (e) => {
+        e.stopPropagation(); // Don't trigger deselectScrambleSlot
+        const speakWord = sel.word.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim();
+        speakText(speakWord);
+      });
+      badge.appendChild(miniSpeaker);
+    }
+    
     badge.addEventListener("click", () => deselectScrambleSlot(i));
     
     slot.appendChild(badge);
@@ -1391,10 +1879,20 @@ function checkScrambleFinished() {
       }
       scrambleSlots.classList.add("all-correct-pulse");
       setTimeout(() => scrambleSlots.classList.remove("all-correct-pulse"), 1000);
+      logPracticeResult(true);
+
+      if (currentLanguage === "vi") {
+        isAnswerShowing = true;
+        answerHint.classList.remove("hidden");
+        if (btnShowAnswer) {
+          btnShowAnswer.innerHTML = '<i class="fa-solid fa-eye-slash"></i> 隱藏答案';
+        }
+      }
     } else {
       resetPetStreak();
       scrambleSlots.classList.add("error-pulse");
       setTimeout(() => scrambleSlots.classList.remove("error-pulse"), 800);
+      logPracticeResult(false);
     }
   }
 }
@@ -1932,6 +2430,10 @@ function prevQuestion() {
 function toggleAnswer() {
   isAnswerShowing = !isAnswerShowing;
   if (isAnswerShowing) {
+    currentRevealedAnswer = true;
+    if (btnShowAnswer) {
+      btnShowAnswer.innerHTML = '<i class="fa-solid fa-eye-slash"></i> 隱藏答案';
+    }
     if (currentMode === "toeic") {
       answerHint.classList.remove("hidden");
       const indexInChunk = currentToeicIndex % 50;
@@ -1943,6 +2445,9 @@ function toggleAnswer() {
       answerHint.classList.remove("hidden");
     }
   } else {
+    if (btnShowAnswer) {
+      btnShowAnswer.innerHTML = '<i class="fa-solid fa-eye"></i> 顯示答案';
+    }
     answerHint.classList.add("hidden");
     explanationBox.classList.add("hidden");
     if (currentMode === "toeic") {
@@ -2079,15 +2584,37 @@ async function markReview() {
 
 /* ----------------- Speech Synthesizer (TTS) ----------------- */
 
+function isVietnameseText(text) {
+  // Check for Vietnamese-specific letters
+  return /[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệđìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ]/i.test(text);
+}
+
 function speakText(text) {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(text);
   const voices = window.speechSynthesis.getVoices();
-  const selectedVoice = voices.find(v => v.name === selectedVoiceName);
-  if (selectedVoice) {
-    utterance.voice = selectedVoice;
+  const isVi = (currentLanguage === "vi") || isVietnameseText(text);
+
+  if (isVi) {
+    utterance.lang = "vi-VN";
+    let voiceToUse = voices.find(v => v.name === selectedVoiceName && (v.lang.startsWith("vi-") || v.lang.startsWith("vi_")));
+    if (!voiceToUse) {
+      voiceToUse = voices.find(v => v.lang.startsWith("vi-") || v.lang.startsWith("vi_"));
+    }
+    if (voiceToUse) {
+      utterance.voice = voiceToUse;
+    }
+  } else {
+    utterance.lang = "en-US";
+    let voiceToUse = voices.find(v => v.name === selectedVoiceName && (v.lang.startsWith("en-") || v.lang.startsWith("en_")));
+    if (!voiceToUse) {
+      voiceToUse = voices.find(v => v.lang.startsWith("en-") || v.lang.startsWith("en_"));
+    }
+    if (voiceToUse) {
+      utterance.voice = voiceToUse;
+    }
   }
 
   utterance.rate = speechRate;
@@ -2125,7 +2652,7 @@ async function handleImportText() {
     }
 
     if (!english && !chinese) {
-      const matches = line.match(/^([a-zA-Z0-9\s.,?!'"-]+)[\s\t]+([\u4e00-\u9fa5\s.,?!，。？！]+)$/);
+      const matches = line.match(/^([\p{L}\p{N}\s.,?!'"-]+)[\s\t]+([\u4e00-\u9fa5\u3000-\u303F\uff00-\uffef\s.,?!，。？！]+)$/u);
       if (matches) {
         english = matches[1].trim();
         chinese = matches[2].trim();
@@ -2164,7 +2691,8 @@ async function handleImportText() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         unit_name: unitName,
-        sentences: parsedSentences
+        sentences: parsedSentences,
+        language: importLangSelect.value
       })
     });
     
@@ -2173,6 +2701,14 @@ async function handleImportText() {
       importModal.classList.remove("show");
       importTextarea.value = "";
       alert(`成功導入 ${result.inserted_count} 個句子！`);
+      
+      const impLang = importLangSelect.value;
+      if (currentLanguage !== impLang) {
+        currentLanguage = impLang;
+        updateLangSelectorUI();
+        saveSettingsToLocalStorage();
+      }
+      
       fetchUnits(result.unit_id);
     } else {
       alert("導入失敗：" + result.error);
@@ -2186,6 +2722,14 @@ async function handleImportText() {
 /* ----------------- Event Registrations & Global Shortcuts ----------------- */
 
 function registerEventListeners() {
+  // Language selector buttons
+  btnLangEn.addEventListener("click", () => changeLanguage("en"));
+  btnLangVi.addEventListener("click", () => changeLanguage("vi"));
+  
+  if (btnShowAnswer) {
+    btnShowAnswer.addEventListener("click", toggleAnswer);
+  }
+
   // Tab buttons
   tabSentence.addEventListener("click", () => switchTab("sentence"));
   tabToeic.addEventListener("click", () => switchTab("toeic"));
@@ -2244,6 +2788,7 @@ function registerEventListeners() {
     } else {
       if (currentSentences.length > 0) {
         speakText(currentSentences[currentSentenceIndex].english);
+        currentAudioPlayCount++;
       }
     }
   });
@@ -2279,9 +2824,12 @@ function registerEventListeners() {
     fetchConfigSettings(); // Load API key configuration
   });
 
+  btnReport.addEventListener("click", openReportModal);
+
   modalClose.addEventListener("click", () => importModal.classList.remove("show"));
   btnImportCancel.addEventListener("click", () => importModal.classList.remove("show"));
   voiceModalClose.addEventListener("click", () => voiceModal.classList.remove("show"));
+  reportModalClose.addEventListener("click", () => reportModal.classList.remove("show"));
   
   btnVoiceClose.addEventListener("click", () => {
     saveConfigSettings(); // Save Gemini API Key if changed
@@ -2291,10 +2839,12 @@ function registerEventListeners() {
   window.addEventListener("click", (e) => {
     if (e.target === importModal) importModal.classList.remove("show");
     if (e.target === voiceModal) voiceModal.classList.remove("show");
+    if (e.target === reportModal) reportModal.classList.remove("show");
   });
 
   btnImportSubmit.addEventListener("click", handleImportText);
   btnSentenceExplain.addEventListener("click", triggerSentenceAiExplain);
+  btnSentenceExplainRefresh.addEventListener("click", () => triggerSentenceAiExplain({ force: true }));
   btnWordLookup.addEventListener("click", triggerWordLookup);
   wordLookupInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -2413,6 +2963,7 @@ function registerEventListeners() {
       } else {
         if (currentSentences.length > 0) {
           speakText(currentSentences[currentSentenceIndex].english);
+          currentAudioPlayCount++;
         }
       }
     }

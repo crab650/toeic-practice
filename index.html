@@ -19,6 +19,13 @@
     <header class="app-header">
       <div class="header-left">
         <button id="btn-back" class="icon-btn" title="返回"><i class="fa-solid fa-chevron-left"></i></button>
+        
+        <!-- Language Selector -->
+        <div class="lang-selector-container" id="lang-selector-container">
+          <button id="btn-lang-en" class="lang-btn active" data-lang="en" title="English">🇬🇧 EN</button>
+          <button id="btn-lang-vi" class="lang-btn" data-lang="vi" title="Tiếng Việt">🇻🇳 VI</button>
+        </div>
+
         <div class="unit-info">
           <select id="unit-selector" class="unit-selector"></select>
           <select id="toeic-filter" class="unit-selector hidden" style="width: 140px; margin-right: 8px;">
@@ -45,9 +52,13 @@
       </div>
 
       <div class="header-right">
+        <button id="btn-report" class="text-btn" title="學習報表與熱力圖"><i class="fa-solid fa-chart-simple"></i> 報表</button>
         <button id="btn-tts-settings" class="text-btn" title="語音與金鑰設定"><i class="fa-solid fa-gears"></i> 設定</button>
         <button id="btn-import" class="accent-btn" title="導入 AI 句子"><i class="fa-solid fa-file-import"></i> 導入</button>
         <button id="btn-reset" class="text-btn" title="重置輸入 (Esc)"><i class="fa-solid fa-rotate-left"></i> 重置</button>
+        <div id="practice-stats-indicator" class="clock-badge" style="background: rgba(0, 242, 254, 0.05); border: 1px solid rgba(0, 242, 254, 0.15); color: #00f2fe; display: flex; align-items: center; gap: 6px;" title="今日答對次數 / 今日總練習次數 (累計總練習次數)">
+          <i class="fa-solid fa-graduation-cap"></i> 今日: <span id="stats-today-correct">0</span>/<span id="stats-today-total">0</span> | 累計: <span id="stats-total-count">0</span>
+        </div>
         <div id="clock-display" class="clock-badge">16:10</div>
       </div>
     </header>
@@ -90,6 +101,7 @@
               </label>
               <span class="mode-label">拆句</span>
             </div>
+            <button id="btn-show-answer" class="speak-btn hidden" title="顯示答案 (Arrow Up/Down)"><i class="fa-solid fa-eye"></i> 顯示答案</button>
             <button id="btn-speak" class="speak-btn" title="朗讀句子 (Ctrl/Alt)"><i class="fa-solid fa-volume-high"></i> 撥音</button>
           </div>
         </div>
@@ -142,6 +154,7 @@
         <div id="sentence-ai-panel" class="sentence-ai-panel">
           <div class="sentence-ai-toolbar">
             <button id="btn-sentence-explain" class="speak-btn"><i class="fa-solid fa-brain"></i> <span id="sentence-explain-btn-text">AI Sentence Notes</span></button>
+            <button id="btn-sentence-explain-refresh" class="speak-btn hidden" title="重新產生 AI 解析" style="padding: 8px 12px; min-width: auto; margin-left: 6px;"><i class="fa-solid fa-rotate"></i></button>
             <div class="word-lookup-box">
               <input id="word-lookup-input" class="word-lookup-input" type="text" placeholder="word / pronunciation">
               <button id="btn-word-lookup" class="speak-btn"><i class="fa-solid fa-magnifying-glass"></i> IPA</button>
@@ -269,6 +282,13 @@
             <label for="import-unit-name">單元名稱：</label>
             <input type="text" id="import-unit-name" value="自訂 AI 單元" placeholder="例如：Unit 12 旅遊英文">
           </div>
+          <div class="form-group">
+            <label for="import-lang-select">語言語系：</label>
+            <select id="import-lang-select" style="width: 100%; border: 1px solid var(--card-border); background: #12162d; border-radius: 6px; padding: 8px 12px; height: 42px; color: var(--text-primary); font-family: var(--font-sans); font-weight: 600; outline: none; cursor: pointer;">
+              <option value="en">🇬🇧 英語 (English)</option>
+              <option value="vi">🇻🇳 越南語 (Vietnamese)</option>
+            </select>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -329,6 +349,61 @@
       </div>
       <div class="modal-footer">
         <button id="btn-voice-close" class="primary-btn">儲存並關閉</button>
+      </div>
+    </div>
+  </div>
+  <!-- Modal: Learning Report & Heatmap -->
+  <div id="report-modal" class="modal">
+    <div class="modal-content glassmorphism" style="max-width: 900px; width: 95%;">
+      <div class="modal-header">
+        <h2><i class="fa-solid fa-chart-simple"></i> 學習報表與熱力圖</h2>
+        <button id="report-modal-close" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+        
+        <!-- Section: Heatmap -->
+        <div class="form-group">
+          <label style="font-weight: 600; font-size: 1.1rem; color: var(--accent-primary); display: flex; justify-content: space-between; align-items: center;">
+            <span>學習熱力圖 (最近 6 個月)</span>
+            <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+              少 
+              <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(255,255,255,0.05);"></span>
+              <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(0, 242, 254, 0.25);"></span>
+              <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(0, 242, 254, 0.5);"></span>
+              <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(0, 242, 254, 0.75);"></span>
+              <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:#00f2fe; box-shadow:0 0 6px #00f2fe;"></span> 
+              多
+            </span>
+          </label>
+          <div style="overflow-x: auto; margin-top: 10px; padding: 4px 0;">
+            <div id="heatmap-months" style="position: relative; height: 18px; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; min-width: 400px;"></div>
+            <div id="practice-heatmap" class="heatmap-grid" style="min-width: 400px;"></div>
+          </div>
+          <p class="import-help" style="font-size: 0.75rem; margin-top: 4px;">格子的亮度深淺反映了您當天的總答題次數（答對 + 答錯），持之以恆點亮您的學習星空吧！</p>
+        </div>
+
+        <!-- Section: Summary Table -->
+        <div class="form-group" style="margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 16px;">
+          <label style="font-weight: 600; font-size: 1.1rem; color: var(--accent-primary); margin-bottom: 12px; display: block;">每日學習明細表</label>
+          <div style="overflow-x: auto;">
+            <table class="report-table" style="width: 100%; border-collapse: collapse; font-size: 0.9rem; text-align: left;">
+              <thead>
+                <tr style="border-bottom: 2px solid rgba(255,255,255,0.1); color: var(--text-secondary);">
+                  <th style="padding: 10px 8px;">日期</th>
+                  <th style="padding: 10px 8px;">語系</th>
+                  <th style="padding: 10px 8px; text-align: center;">練習次數</th>
+                  <th style="padding: 10px 8px; text-align: center;">答錯次數</th>
+                  <th style="padding: 10px 8px; text-align: center;">播音次數</th>
+                  <th style="padding: 10px 8px; text-align: center;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="report-summary-body">
+                <!-- Summary rows populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>

@@ -1,5 +1,18 @@
 import sqlite3
 import json
+import sys
+
+# Ensure console supports utf-8 output on Windows
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 from .classifier import classify_question_locally
 from .config import DATABASE
@@ -99,6 +112,29 @@ def init_db():
         )
     ''')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS practice_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sentence_id INTEGER,
+            practice_date TEXT DEFAULT (CURRENT_DATE),
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            is_correct INTEGER DEFAULT 1,
+            synced INTEGER DEFAULT 0,
+            audio_play_count INTEGER DEFAULT 0,
+            revealed_answer INTEGER DEFAULT 0,
+            FOREIGN KEY (sentence_id) REFERENCES sentences(id) ON DELETE CASCADE
+        )
+    ''')
+
+    for column_sql in [
+        "ALTER TABLE practice_history ADD COLUMN audio_play_count INTEGER DEFAULT 0",
+        "ALTER TABLE practice_history ADD COLUMN revealed_answer INTEGER DEFAULT 0",
+    ]:
+        try:
+            cursor.execute(column_sql)
+        except sqlite3.OperationalError:
+            pass
+
     cursor.execute("SELECT id FROM pet_state WHERE id = 1")
     if not cursor.fetchone():
         default_pet_state = {
@@ -129,11 +165,15 @@ def init_db():
         "ALTER TABLE toeic_part2_questions ADD COLUMN chinese TEXT",
         "ALTER TABLE toeic_part2_questions ADD COLUMN explanation TEXT",
         "ALTER TABLE toeic_questions ADD COLUMN category TEXT",
+        "ALTER TABLE units ADD COLUMN language TEXT DEFAULT 'en'",
     ]:
         try:
             cursor.execute(column_sql)
         except sqlite3.OperationalError:
             pass
+
+    # Ensure all previously seeded Vietnamese units are set to 'vi'
+    cursor.execute("UPDATE units SET language = 'vi' WHERE name LIKE '%越南%' OR name LIKE '%越文%' OR name LIKE '%電梯%' OR name LIKE '%岳母%'")
 
     cursor.execute("SELECT id, option_a, option_b, option_c, option_d FROM toeic_questions WHERE category IS NULL")
     null_rows = cursor.fetchall()
@@ -145,12 +185,15 @@ def init_db():
 
     conn.commit()
 
-    cursor.execute("SELECT COUNT(*) FROM units")
-    if cursor.fetchone()[0] == 0:
-        print("Initializing database with default units and sentences...")
-        for bank in DEFAULT_BANKS:
+    print("Checking default units and seeding if missing...")
+    for bank in DEFAULT_BANKS:
+        cursor.execute("SELECT id FROM units WHERE name = ?", (bank["name"],))
+        row = cursor.fetchone()
+        if not row:
             try:
-                cursor.execute("INSERT INTO units (name) VALUES (?)", (bank["name"],))
+                print(f"Seeding default unit: {bank['name']}")
+                lang = bank.get("language", "en")
+                cursor.execute("INSERT INTO units (name, language) VALUES (?, ?)", (bank["name"], lang))
                 unit_id = cursor.lastrowid
                 for sent in bank["sentences"]:
                     cursor.execute(
@@ -158,7 +201,7 @@ def init_db():
                         (unit_id, sent["english"], sent["chinese"]),
                     )
             except Exception as e:
-                print(f"Error seeding default data: {e}")
-        conn.commit()
+                print(f"Error seeding default data for {bank['name']}: {e}")
+    conn.commit()
 
     conn.close()
